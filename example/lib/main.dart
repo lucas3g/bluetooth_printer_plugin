@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:bluetooth_printer_plugin/bluetooth_printer_plugin.dart';
+import 'package:bluetooth_printer_plugin/domain/states/bluetooth_states.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   runApp(const MyApp());
@@ -15,8 +17,9 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  List<Map<String, dynamic>> _devices = [];
   late bool connected = false;
+
+  late bool loadingDevices = false;
 
   final _bluetoothPrinterPlugin = BluetoothPrinterPlugin();
 
@@ -24,29 +27,50 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
 
-    getPairedDevices();
+    _bluetoothPrinterPlugin.addListener(() {
+      setState(() {});
+    });
   }
 
   Future<void> getPairedDevices() async {
-    late List<Map<String, dynamic>> devices;
+    loadingDevices = true;
+    setState(() {});
 
-    devices = await _bluetoothPrinterPlugin.getPairedDevices();
+    await _bluetoothPrinterPlugin.getPairedDevices();
 
     if (!mounted) return;
 
     setState(() {
-      _devices = devices;
+      loadingDevices = false;
     });
   }
 
-  Future<void> connectDevice(String address) async {
-    connected = await _bluetoothPrinterPlugin.connectDevice(address);
+  Future<void> connectDevice(String address, int widhPaper) async {
+    await _bluetoothPrinterPlugin.connectDevice(address, widhPaper);
+  }
 
-    setState(() {});
+  Future<void> disconnectDevice() async {
+    await _bluetoothPrinterPlugin.disconnectDevice();
   }
 
   Future<void> printText(String text, int size, int align) async {
-    await _bluetoothPrinterPlugin.printText(text, size, align);
+    await _bluetoothPrinterPlugin.printText(
+        text: text, size: size, align: align);
+  }
+
+  Future<void> printImage(String path) async {
+    await _bluetoothPrinterPlugin.printImage(path);
+  }
+
+  Future<Uint8List> getImageFromAssets(String path) async {
+    ByteData data = await rootBundle.load(path);
+    return data.buffer.asUint8List();
+  }
+
+  Future<void> printImageBytes(String path, int align) async {
+    final bytes = await getImageFromAssets(path);
+
+    _bluetoothPrinterPlugin.printImageBytes(bytes, align);
   }
 
   @override
@@ -58,27 +82,68 @@ class _MyAppState extends State<MyApp> {
         ),
         body: Column(
           children: [
-            Expanded(
-              child: ListView.builder(
-                itemCount: _devices.length,
-                itemBuilder: (context, index) {
-                  final printer = _devices[index];
+            loadingDevices
+                ? const CircularProgressIndicator()
+                : Expanded(
+                    child: ListView.builder(
+                      itemCount: _bluetoothPrinterPlugin.devices.length,
+                      itemBuilder: (context, index) {
+                        final printer = _bluetoothPrinterPlugin.devices[index];
+                        final state = _bluetoothPrinterPlugin.state;
 
-                  return ListTile(
-                    onTap: () async => await connectDevice(printer['address']),
-                    title: Text(printer['name']),
-                    subtitle: Text(connected ? 'Conectada' : 'Desconectada'),
-                  );
-                },
-              ),
-            ),
+                        return ListTile(
+                          leading: state is ConnectingBlueooth
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                )
+                              : null,
+                          onTap: () async {
+                            if (!printer.isConnected) {
+                              await connectDevice(printer.address, 80);
+
+                              return;
+                            }
+
+                            await disconnectDevice();
+                          },
+                          title: Text(printer.name),
+                          subtitle: Text(
+                            printer.isConnected ? 'Connected' : 'Disconnected',
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+            const SizedBox(height: 10),
             ElevatedButton(
-              onPressed: connected
+              onPressed: _bluetoothPrinterPlugin.devices
+                      .where((e) => e.isConnected)
+                      .isNotEmpty
                   ? () {
-                      printText('Impressao de teste!!!', 1, 1);
+                      printText('Print Test!!', 1, 0);
                     }
                   : null,
-              child: const Text('Imprimir'),
+              child: const Text('Print Test'),
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: _bluetoothPrinterPlugin.devices
+                      .where((e) => e.isConnected)
+                      .isNotEmpty
+                  ? () => printImageBytes('assets/images/qr.png', 1)
+                  : null,
+              child: const Text('Print Image'),
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: () {
+                getPairedDevices();
+              },
+              child: const Text('Search Devices'),
             ),
             const SizedBox(height: 30),
           ],

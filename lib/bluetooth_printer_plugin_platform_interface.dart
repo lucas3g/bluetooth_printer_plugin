@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'bluetooth_printer_plugin_method_channel.dart';
@@ -26,7 +29,17 @@ abstract class BluetoothPrinterPluginPlatform extends PlatformInterface {
 
   Future<String> getPairedDevices();
 
-  Future<bool> connectDevice(String address);
+  Future<bool> connectDevice(String address, int widthPaper);
 
-  Future<bool> printText(String text, int size, int align);
+  Future<bool> disconnectDevice();
+
+  Future<bool> printText({
+    required String text,
+    required int size,
+    required int align,
+  });
+
+  Future<bool> printImage({required ui.Image image});
+
+  Future<bool> printImageBytes({required Uint8List bytes, required int align});
 }
